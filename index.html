@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMARD Forecast Dashboard</title>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background: #f4f4f9; }
+        .container { max-width: 1200px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .controls { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; background: #eee; padding: 15px; border-radius: 5px; }
+        select, input { padding: 8px; border-radius: 4px; border: 1px solid #ccc; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #fafafa; }
+        .tabs { margin-bottom: 10px; }
+        .tab-btn { padding: 10px 20px; cursor: pointer; border: none; background: #ddd; margin-right: 5px; border-radius: 5px 5px 0 0; }
+        .tab-btn.active { background: #007bff; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>SMARD Forecast Comparison</h2>
+    
+    <div class="controls">
+        <div>
+            <label>Region:</label>
+            <select id="regionSelect" onchange="updateDashboard()">
+                <option value="DE">DE</option>
+                <option value="50Hertz">50Hertz</option>
+                <option value="Amprion">Amprion</option>
+                <option value="TenneT">TenneT</option>
+                <option value="TransnetBW">TransnetBW</option>
+            </select>
+        </div>
+        <div>
+            <label>Model for Graph:</label>
+            <select id="modelSelect" onchange="updateDashboard()">
+                </select>
+        </div>
+    </div>
+
+    <div id="graph" style="width:100%; height:500px;"></div>
+
+    <h3>Performance Metrics</h3>
+    <table id="metricsTable">
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>MAE (MW)</th>
+                <th>MAPE (%)</th>
+                <th>RMSE (MW)</th>
+                <th>R²</th>
+            </tr>
+        </thead>
+        <tbody id="metricsBody"></tbody>
+    </table>
+</div>
+
+<script>
+    const CSV_URL = 'https://raw.githubusercontent.com/john-zither/Smard-Forecasts/main/forecast_database.csv';
+    let rawData = [];
+
+    // Initialize
+    async function init() {
+        const modelSelect = document.getElementById('modelSelect');
+        for(let i=12; i<=24; i++) {
+            let opt = document.createElement('option');
+            opt.value = i; opt.text = `Model ${i}`;
+            modelSelect.appendChild(opt);
+        }
+
+        Papa.parse(CSV_URL, {
+            download: true,
+            header: true,
+            dynamicTyping: true,
+            complete: function(results) {
+                rawData = results.data.filter(d => d.datetime);
+                updateDashboard();
+            }
+        });
+    }
+
+    function updateDashboard() {
+        const region = document.getElementById('regionSelect').value;
+        const model = document.getElementById('modelSelect').value;
+        
+        const filtered = rawData.filter(d => d.region === region);
+        
+        renderGraph(filtered, model, region);
+        renderTable(filtered, region);
+    }
+
+    function renderGraph(data, modelTag, region) {
+        const actuals = data.filter(d => d.model === 'actual');
+        const forecasts = data.filter(d => d.model == modelTag);
+        const smard = data.filter(d => d.model === 'smard_forecast');
+
+        const trace1 = {
+            x: actuals.map(d => d.datetime),
+            y: actuals.map(d => d.value),
+            name: 'Actual', type: 'scatter', line: {color: 'black', width: 2}
+        };
+        const trace2 = {
+            x: forecasts.map(d => d.datetime),
+            y: forecasts.map(d => d.value),
+            name: `Model ${modelTag}`, type: 'scatter', line: {dash: 'dash', color: 'blue'}
+        };
+        const trace3 = {
+            x: smard.map(d => d.datetime),
+            y: smard.map(d => d.value),
+            name: 'SMARD Forecast', type: 'scatter', line: {color: 'red', opacity: 0.5}
+        };
+
+        const layout = {
+            title: `Last 3 Days: ${region}`,
+            xaxis: { title: 'Time', range: [getDaysAgo(3), getDaysAgo(-1)] },
+            yaxis: { title: 'MW' },
+            legend: { orientation: 'h', y: -0.2 }
+        };
+
+        Plotly.newPlot('graph', [trace1, trace2, trace3], layout);
+    }
+
+    function renderTable(data, region) {
+        const models = [...Array(13).keys()].map(i => (i + 12).toString()).concat(['smard_forecast']);
+        const actualsMap = new Map(data.filter(d => d.model === 'actual').map(d => [d.datetime, d.value]));
+        const tbody = document.getElementById('metricsBody');
+        tbody.innerHTML = '';
+
+        models.forEach(m => {
+            const mData = data.filter(d => d.model == m);
+            if (mData.length === 0) return;
+
+            let ae = [], ape = [], se = [], yActual = [], yPred = [];
+
+            mData.forEach(d => {
+                const actual = actualsMap.get(d.datetime);
+                if (actual !== undefined && actual !== null) {
+                    const error = d.value - actual;
+                    ae.push(Math.abs(error));
+                    ape.push(Math.abs(error / actual));
+                    se.push(error * error);
+                    yActual.push(actual);
+                    yPred.push(d.value);
+                }
+            });
+
+            if (ae.length > 0) {
+                const mae = ae.reduce((a, b) => a + b) / ae.length;
+                const mape = (ape.reduce((a, b) => a + b) / ape.length) * 100;
+                const rmse = Math.sqrt(se.reduce((a, b) => a + b) / se.length);
+                const r2 = calculateR2(yActual, yPred);
+
+                const row = `<tr>
+                    <td>${m === 'smard_forecast' ? 'SMARD Official' : 'Model ' + m}</td>
+                    <td>${mae.toFixed(2)}</td>
+                    <td>${mape.toFixed(2)}%</td>
+                    <td>${rmse.toFixed(2)}</td>
+                    <td>${r2.toFixed(4)}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            }
+        });
+    }
+
+    function calculateR2(actual, pred) {
+        const mean = actual.reduce((a, b) => a + b) / actual.length;
+        const ssRes = actual.reduce((sum, a, i) => sum + Math.pow(a - pred[i], 2), 0);
+        const ssTot = actual.reduce((sum, a) => sum + Math.pow(a - mean, 2), 0);
+        return 1 - (ssRes / ssTot);
+    }
+
+    function getDaysAgo(days) {
+        const d = new Date();
+        d.setDate(d.getDate() - days);
+        return d.toISOString();
+    }
+
+    init();
+</script>
+</body>
+</html>
