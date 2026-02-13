@@ -1,6 +1,8 @@
 # SMARD Demand Forecast
 
-I thought SMARD's demand forecasts were a little off, and with little effort i could do a decent bit better. To test this, i put together a little script and will be uploading my forecasts regularly.
+I thought SMARD's demand forecasts were a little off, and with little effort i could do a decent bit better. To test this, I put together a little script and will be uploading my forecasts regularly.
+
+SMARD's forecasts are fine, I just thought it would be straightforward to be more accurate. However, as everyone knows, no model is perfect, some are useful. I suspect that any forecasting advantage I have over SMARD is due to SMARD's forecasts informing large electricity consumers, causing them to adjust consumption.
 
 ## Data
 
