@@ -215,7 +215,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-output/*
 frontend/*
 docs/*
 *.py
@@ -225,4 +224,7 @@ catboost_info/*
 data/*
 .cursor/*
 web_data/*
+output/**
+!output/**/
 !output/**/*.pkl
+!fetch_and_forecast.py
