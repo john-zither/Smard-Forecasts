@@ -53,6 +53,7 @@
                 <th>MAE (MW)</th>
                 <th>MAPE (%)</th>
                 <th>RMSE (MW)</th>
+                <th>MedAE (MW)</th>
                 <th>R²</th>
             </tr>
         </thead>
@@ -150,6 +151,11 @@
             });
 
             if (ae.length > 0) {
+                const sortedAE = [...ae].sort((a, b) => a - b);
+                const mid = Math.floor(sortedAE.length / 2);
+                const medAE = sortedAE.length % 2 !== 0 
+                    ? sortedAE[mid] 
+                    : (sortedAE[mid - 1] + sortedAE[mid]) / 2;
                 const mae = ae.reduce((a, b) => a + b) / ae.length;
                 const mape = (ape.reduce((a, b) => a + b) / ape.length) * 100;
                 const rmse = Math.sqrt(se.reduce((a, b) => a + b) / se.length);
@@ -160,6 +166,7 @@
                     <td>${mae.toFixed(2)}</td>
                     <td>${mape.toFixed(2)}%</td>
                     <td>${rmse.toFixed(2)}</td>
+                    <td>${medAE.toFixed(2)}</td>
                     <td>${r2.toFixed(4)}</td>
                 </tr>`;
                 tbody.innerHTML += row;
