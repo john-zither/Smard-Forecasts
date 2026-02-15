@@ -50,4 +50,5 @@ jobs:
           git config user.email "actions@github.com"
           git add forecast_database.csv
           git commit -m "Update forecast database" || echo "No changes"
-          git push
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git push origin main
