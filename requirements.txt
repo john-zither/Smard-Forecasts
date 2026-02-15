@@ -1,0 +1,43 @@
+# Core
+pandas>=2.0
+numpy
+matplotlib
+seaborn
+
+# Statistical
+statsmodels
+scipy
+
+# ML
+scikit-learn
+xgboost
+lightgbm
+catboost
+prophet
+optuna
+pmdarima
+tbats
+darts
+sktime
+
+# Deep Learning
+torch
+pytorch-forecasting
+lightning
+
+# Data fetching
+deutschland
+openmeteo-requests
+requests-cache
+retry-requests
+
+# Utilities
+tqdm
+python-dotenv
+holidays
+
+# Visualization
+bokeh
+
+# Web
+flask

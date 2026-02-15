@@ -219,6 +219,7 @@ frontend/*
 docs/*
 *.py
 *.txt
+!requirements.txt
 .dockerignore
 catboost_info/*
 data/*

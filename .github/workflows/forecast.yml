@@ -20,7 +20,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install pandas numpy requests holidays pytz
+          pip install -r requirements.txt
 
       - name: Run forecast at Berlin time
         run: |
