@@ -55,7 +55,7 @@ def fetch_smard_series(filter_id, region, existing_data=None):
         indices = requests.get(url_idx, timeout=30).json()["timestamps"]
 
         all_data = []
-        for ts in indices[-1:]:
+        for ts in indices[-3:]:
             url = (
                 f"https://www.smard.de/app/chart_data/"
                 f"{filter_id}/{region}/"
