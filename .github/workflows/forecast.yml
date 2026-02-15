@@ -2,7 +2,7 @@ name: Run Forecast
 
 on:
   schedule:
-    - cron: "*/30 * * * *"  # every 30 minutes
+    - cron: "15 * * * *"  # every hour at minute 15 UTC
   workflow_dispatch:
 
 jobs:
@@ -18,12 +18,31 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
-          pip install pandas numpy requests holidays
+          pip install pandas numpy requests holidays pytz
 
-      - name: Run forecast
-        run: python fetch_and_forecast.py
+      - name: Run forecast at Berlin time
+        run: |
+          python - <<'EOF'
+          from datetime import datetime
+          import pytz
+          from pathlib import Path
+          import subprocess
+
+          # Set Berlin timezone
+          berlin = pytz.timezone("Europe/Berlin")
+          now_berlin = datetime.now(berlin)
+          hour = now_berlin.hour
+          minute = now_berlin.minute
+
+          # Only run if hour is 12-23 OR 0 (midnight) and minute is 15
+          if (hour == 0 or 12 <= hour <= 23) and minute == 15:
+              print(f"Running forecast at Berlin time {now_berlin.strftime('%H:%M')}")
+              subprocess.run(["python", "fetch_and_forecast.py"], check=True)
+          else:
+              print(f"Skipping forecast at Berlin time {now_berlin.strftime('%H:%M')}")
+          EOF
 
       - name: Commit updated database
         run: |
