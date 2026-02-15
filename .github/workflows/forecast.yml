@@ -37,7 +37,7 @@ jobs:
           minute = now_berlin.minute
 
           # Only run if hour is 12-23 OR 0 (midnight) and minute is 15
-          if (hour == 0 or 12 <= hour <= 23) and minute == 15:
+          if (hour == 0 or 12 <= hour <= 23):
               print(f"Running forecast at Berlin time {now_berlin.strftime('%H:%M')}")
               subprocess.run(["python", "fetch_and_forecast.py"], check=True)
           else:
