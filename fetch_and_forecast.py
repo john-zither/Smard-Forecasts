@@ -8,7 +8,18 @@ from datetime import datetime, timedelta
 import holidays
 import warnings
 
+import cache as _cache
+
 warnings.filterwarnings("ignore")
+
+_model_cache: dict = {}
+
+
+def _load_model(path: Path) -> dict:
+    if path not in _model_cache:
+        with open(path, "rb") as f:
+            _model_cache[path] = pickle.load(f)
+    return _model_cache[path]
 
 # --- CONFIG ---
 REGIONS = {
@@ -117,9 +128,9 @@ def main():
     for tso_name, tso_id in REGIONS.items():
         print(f"Processing {tso_name}...")
         
-        # 1. Fetch data
-        actuals = fetch_smard_series(410, tso_id)
-        smard_f = fetch_smard_series(411, tso_id)
+        # 1. Fetch data (cached 15 min for actuals, 1 h for SMARD forecast)
+        actuals = _cache.cached(f"smard_410_{tso_id}", lambda tid=tso_id: fetch_smard_series(410, tid), ttl=900)
+        smard_f = _cache.cached(f"smard_411_{tso_id}", lambda tid=tso_id: fetch_smard_series(411, tid), ttl=3600)
 
         # 2. SAVE RAW DATA IMMEDIATELY (The "Grab")
         for label, series in [("actual", actuals), ("smard_forecast", smard_f)]:
@@ -140,7 +151,7 @@ def main():
 
                 model_path = OUTPUT_DIR / tso_name / f"{h:02d}" / "best_model.pkl"
                 if not model_path.exists(): continue
-                with open(model_path, "rb") as f: pkg = pickle.load(f)
+                pkg = _load_model(model_path)
 
                 issue_hour = 0 if h == 24 else h
                 issue_ts = pd.Timestamp(target_date - timedelta(days=1), tz="Europe/Berlin").replace(hour=issue_hour)

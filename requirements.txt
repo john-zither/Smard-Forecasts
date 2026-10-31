@@ -8,3 +8,7 @@ catboost==1.2.8
 scikit-learn==1.7.2
 lightgbm==4.6.0
 xgboost==3.1.3
+geopandas>=0.14.0
+pyproj>=3.6.0
+matplotlib>=3.8.0
+shapely>=2.0.0

@@ -217,7 +217,6 @@ __marimo__/
 
 frontend/*
 docs/*
-*.py
 *.txt
 !requirements.txt
 .dockerignore
@@ -228,4 +227,3 @@ web_data/*
 output/**
 !output/**/
 !output/**/*.pkl
-!fetch_and_forecast.py

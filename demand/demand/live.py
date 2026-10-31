@@ -200,7 +200,7 @@ def publish() -> None:
             print("publish: nothing new")
             return
         git('-c', 'user.name=John Theurer', '-c', 'user.email=john@energy-data-solutions.com',
-            'commit', '-m', f"Live forecast for {', '.join(new_days) or 'scoreboard update'}")
+            'commit', '-m', f"Live forecast for {', '.join(new_days)}" if new_days else "Update live scoreboard")
         git('push', 'origin', 'HEAD:main')
         print(f"publish: pushed {', '.join(new_days) or 'scoreboard'}")
 
