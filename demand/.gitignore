@@ -5,3 +5,4 @@ results/*.parquet
 results/*.npz
 results/*.log
 models/
+live/*.log
