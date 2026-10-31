@@ -4,3 +4,4 @@ results/*.csv
 results/*.parquet
 results/*.npz
 results/*.log
+models/

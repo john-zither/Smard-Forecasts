@@ -84,9 +84,10 @@ def _wall_clock_days(utc: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(m, index=grid[::SLOTS])
 
 
-def smard_series(filter_id: int, region: str) -> pd.DataFrame:
+def smard_series(filter_id: int, region: str, recent: int | None = None) -> pd.DataFrame:
+    """Full history, or only the last `recent` weekly chunks."""
     root = f'{SMARD}/{filter_id}/{region}'
-    chunks = _get(f'{root}/index_quarterhour.json')['timestamps']
+    chunks = _get(f'{root}/index_quarterhour.json')['timestamps'][-(recent or 0):]
     with ThreadPoolExecutor(8) as pool:
         parts = pool.map(lambda ts: _get(f'{root}/{filter_id}_{region}_quarterhour_{ts}.json')['series'], chunks)
         rows = [(t, v) for part in parts for t, v in part if v is not None]
@@ -148,11 +149,15 @@ def path(name: str) -> Path:
     return DATA_DIR / f'{name}.parquet'
 
 
-def download(smard: bool = True) -> None:
+def download(smard: bool = True, incremental: bool = False) -> None:
+    """incremental: refetch only the last three weeks of SMARD data and merge them in."""
     DATA_DIR.mkdir(exist_ok=True)
     for region in REGIONS if smard else []:
         for fid, name in [(ACTUAL, 'actual'), (FORECAST, 'smard')]:
-            m = smard_series(fid, region)
+            if incremental and path(f'{name}_{region}').exists():
+                m = smard_series(fid, region, recent=3).combine_first(load(name, region))
+            else:
+                m = smard_series(fid, region)
             m.columns = m.columns.astype(str)
             m.to_parquet(path(f'{name}_{region}'))
             print(f"  {name:6s} {region:10s} {m.index[0].date()} → {m.index[-1].date()}")

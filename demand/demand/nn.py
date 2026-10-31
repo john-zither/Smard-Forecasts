@@ -87,14 +87,21 @@ class DayNet(nn.Module):
         return 1 + self.out(h).squeeze(-1)      # scaled load sits around 1
 
 
-def prepare(X: np.ndarray, train: np.ndarray):
-    """Standardize on the training days; zero NaNs and append missing-value flags."""
+def fit_scaler(X: np.ndarray, train: np.ndarray) -> dict:
+    """Standardization from the training days, and which features get a missing-value flag."""
+    return {'mu': np.nanmean(X[train], axis=(0, 1, 2)), 'sd': np.nanstd(X[train], axis=(0, 1, 2)) + 1e-6,
+            'flags': np.isnan(X).any(axis=(0, 1, 2))}
+
+
+def apply_scaler(X: np.ndarray, sc: dict) -> np.ndarray:
+    """Standardize, zero NaNs and append missing-value flags."""
     nan = np.isnan(X)
-    flags = nan.any(axis=(0, 1, 2))
-    mu = np.nanmean(X[train], axis=(0, 1, 2))
-    sd = np.nanstd(X[train], axis=(0, 1, 2)) + 1e-6
-    Z = np.nan_to_num((X - mu) / sd)
-    return np.concatenate([Z, nan[..., flags].astype(np.float32)], axis=-1)
+    Z = np.nan_to_num((X - sc['mu']) / sc['sd'])
+    return np.concatenate([Z, nan[..., sc['flags']].astype(np.float32)], axis=-1).astype(np.float32)
+
+
+def prepare(X: np.ndarray, train: np.ndarray) -> np.ndarray:
+    return apply_scaler(X, fit_scaler(X, train))
 
 
 def fit(Z, y, train, val, seed, device, epochs=150, patience=20):
