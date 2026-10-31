@@ -1,19 +1,49 @@
 # SMARD Demand Forecast
 
-I thought SMARD's demand forecasts were a little off, and with little effort i could do a decent bit better. To test this, I put together a little script and will be uploading my forecasts regularly.
+SMARD (Bundesnetzagentur) publishes a day-ahead forecast of German grid
+load, nationally and for each of the four transmission regions. This
+project finds the weakest of those forecasts and beats it **without using
+SMARD's forecast as an input**, with a live daily record.
 
-SMARD's forecasts are fine, I just thought it would be straightforward to be more accurate. However, as everyone knows, no model is perfect, some are useful. I suspect that any forecasting advantage I have over SMARD is due to SMARD's forecasts informing large electricity consumers, causing them to adjust consumption.
+## Which forecast to beat
 
-## Data
+Compared with "same quarter-hour last week", which anyone can produce,
+SMARD's wind and solar forecasts are 79–87% better, and its national load
+forecast 27% better. Its **regional load forecasts** are its weakest: for
+50Hertz, TenneT and TransnetBW they are no better than last week's load.
 
-I produced 12 different models, starting with limiting myself to the data avalible at noon, ending on the data avalible at midnight. each of these models has validation metrics that outperform by 25% or more, but the more recent models have better performance.
+## Results
 
-The input data for the model consists only of each regions past demand, and for models after 6 pm, I include the smard forecast values themselves. These models are certianly able to be improved, but this was my first pass.
+Forecasts issued at 12:00 the day before, monthly walk-forward over
+2025-11-01 → 2026-10-30. Each month is forecast by models trained only on
+data up to two days before it, with weather *as forecast at the time*.
+Error is MAE as a share of mean load.
 
-My forecasts are stored in the forecast_database.csv. The rows are explained below
+| Region | SMARD | This model | Error vs SMARD |
+|---|---|---|---|
+| Germany | 3.79% | **2.54%** | −33% |
+| 50Hertz | 8.13% | **5.33%** | −35% |
+| Amprion | 4.40% | **3.54%** | −19% |
+| TenneT | 6.39% | **2.99%** | −53% |
+| TransnetBW | 7.07% | **2.87%** | −59% |
 
--  datetime: The time being forecasted
--  time_calculated: The time i ran the script
--  model: The model being used, actual refers to the actual values, smard_forecast refers to the forecasts on the smard website, while the hours 12-24 refer to each of my models
--  value
--  region
+The model is the average of a LightGBM model and a neural network that
+forecasts all five regions at once, trained on a home Kubernetes cluster's
+GPU. It beats SMARD in 58 of 60 region-months. Methods, baselines, tests
+and caveats are in **[demand/](demand/README.md)**.
+
+**Live record:** every day at 12:00 the model forecasts tomorrow and logs
+it next to SMARD's forecast as published at that moment:
+[demand/live/scoreboard.md](demand/live/scoreboard.md),
+[demand/live/forecasts.csv](demand/live/forecasts.csv).
+
+## History
+
+The first version (`fetch_and_forecast.py`, published hourly to
+`forecast_database.csv` from February to August 2026) claimed
+validation results 25% better than SMARD. Scored on its live forecasts it
+wasn't: over 169 days its noon model was worse than SMARD in every region
+except 50Hertz, and often worse than last week's load. Two things changed:
+weather forecasts (including solar radiation, since rooftop PV lowers grid
+load at midday) and an evaluation that only allows data published by the
+issue time. That GitHub Action is no longer maintained.
