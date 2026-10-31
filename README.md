@@ -32,10 +32,11 @@ forecasts all five regions at once, trained on a home Kubernetes cluster's
 GPU. It beats SMARD in 58 of 60 region-months. Methods, baselines, tests
 and caveats are in **[demand/](demand/README.md)**.
 
-**Live record:** every day at 12:00 the model forecasts tomorrow and logs
-it next to SMARD's forecast as published at that moment:
-[demand/live/scoreboard.md](demand/live/scoreboard.md),
-[demand/live/forecasts.csv](demand/live/forecasts.csv).
+**Live record:** every day at 12:00 the model forecasts tomorrow, next to
+SMARD's forecast as published at that moment, and commits it to
+[demand/live/forecasts/](demand/live/forecasts/) before the day happens.
+Scoreboard: **[john-zither.github.io/Smard-Forecasts](https://john-zither.github.io/Smard-Forecasts/)**
+([as markdown](demand/live/scoreboard.md)).
 
 ## History
 

@@ -10,8 +10,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
 WORKDIR /build
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-install-project --extra nn && rm -rf /root/.cache
-# LightGBM's OpenMP runtime; the slim base image doesn't ship it.
-RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+# LightGBM's OpenMP runtime, and git + ssh for publishing the live forecast.
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 git openssh-client && rm -rf /var/lib/apt/lists/*
 # Pods run as uid 1000 (the host user owning the mounted project).
 RUN useradd --uid 1000 --create-home app
 ENV PATH=/opt/venv/bin:$PATH \

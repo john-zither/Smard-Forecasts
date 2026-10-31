@@ -6,3 +6,4 @@ results/*.npz
 results/*.log
 models/
 live/*.log
+live-state/

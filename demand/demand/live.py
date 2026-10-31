@@ -5,14 +5,22 @@
 
 The daily run refreshes SMARD and the weather, forecasts tomorrow's 96
 quarter-hours for every region with both saved models, and appends to
-live/forecasts.csv, together with SMARD's forecast for the same day *as
-published at that moment*. Then it scores every logged day whose actuals
-are complete: live/scoreboard.md. Each row records when it was issued, so
-the log is a record of forecasts made before the outcome was known.
+live-state/forecasts.csv, together with SMARD's forecast for the same day
+*as published at that moment*. Then it scores every logged day whose
+actuals are complete.
+
+With PUBLISH set, it pushes to the GitHub repo (deploy key in the CronJob):
+  demand/live/forecasts/<day>.csv   that day's first forecast, never rewritten,
+                                    so its commit time proves it predates the outcome
+  demand/live/scoreboard.md, .json  the running score; the JSON feeds the Pages site
 """
 
 import argparse
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -25,8 +33,11 @@ from demand.features import build, feature_columns
 
 ROOT = Path(__file__).parent.parent
 MODELS = ROOT / 'models'
-LIVE = ROOT / 'live'
+LIVE = ROOT / 'live-state'                 # local working state (gitignored)
 LOG = LIVE / 'forecasts.csv'
+REPO = 'git@github.com:john-zither/Smard-Forecasts.git'
+PUBLISHED = 'demand/live'
+PROFILE_DAYS = 14                          # days of quarter-hour profiles on the website
 SEEDS = 3
 VAL_DAYS = 42
 
@@ -113,39 +124,91 @@ def forecast() -> None:
     print(f"Forecast for {day.date()} issued {now:%Y-%m-%d %H:%M %Z}: "
           + ", ".join(f"{reg} {fc["ensemble"][r].sum() / 1e3:.0f} GWh" for r, reg in enumerate(REGIONS)))
     scoreboard()
+    if os.environ.get('PUBLISH'):
+        publish()
 
 
-def scoreboard() -> None:
-    """Score each logged day (its first forecast only) once its actuals are complete."""
+def scored_log() -> pd.DataFrame:
+    """Each day's first logged forecast, with actual load where published."""
     log = pd.read_csv(LOG)
     first = log.groupby(['day', 'region', 'slot', 'forecast']).first().reset_index()
     actual = {region: load('actual', region) for region in REGIONS}
     first['actual'] = [actual[r].at[pd.Timestamp(d), s] if pd.Timestamp(d) in actual[r].index else np.nan
                        for d, r, s in zip(first.day, first.region, first.slot)]
-    first = first[first.groupby(['day', 'region']).actual.transform(lambda a: a.notna().all())]
+    first['complete'] = first.groupby(['day', 'region']).actual.transform(lambda a: a.notna().all())
+    return first
+
+
+def _nmae(g: pd.DataFrame, name: str) -> float:
+    g = g[g.forecast == name]
+    return float((g.mwh - g.actual).abs().mean() / g.actual.mean())
+
+
+def scoreboard() -> None:
+    """Score each logged day (its first forecast only) once its actuals are complete."""
+    first = scored_log()
+    done = first[first.complete]
     lines = ["# Live scoreboard", "",
-             "Forecasts issued at 12:00 (Europe/Berlin) the day before, logged in `forecasts.csv` before the",
-             "outcome was known. nMAE = mean absolute error / mean actual load, over all scored quarter-hours.", ""]
-    if first.empty:
+             "Forecasts issued at 12:00 (Europe/Berlin) the day before; each day's forecast is committed to",
+             "`forecasts/<day>.csv` before the outcome is known. nMAE = mean absolute error / mean actual load.", ""]
+    board = {'updated_at': pd.Timestamp.now(TZ).isoformat(timespec='seconds'), 'regions': REGIONS,
+             'live': {}, 'daily': [], 'profiles': []}
+    if done.empty:
         lines.append("No complete day yet.")
     else:
-        days = first.day.nunique()
-        lines += [f"{days} day(s) scored, {first.day.min()} → {first.day.max()}.", "",
+        lines += [f"{done.day.nunique()} day(s) scored, {done.day.min()} → {done.day.max()}.", "",
                   "| region | this model | SMARD | error vs SMARD |", "|---|---|---|---|"]
         for region in REGIONS:
-            g = first[first.region == region]
-            err = lambda name: (g[g.forecast == name].mwh - g[g.forecast == name].actual).abs().mean()
-            mean = g[g.forecast == 'ensemble'].actual.mean()
-            e, s = err('ensemble'), err('smard')
-            lines.append(f"| {region} | {e / mean:.2%} | {s / mean:.2%} | {e / s - 1:+.0%} |")
+            g = done[done.region == region]
+            e, s = _nmae(g, 'ensemble'), _nmae(g, 'smard')
+            board['live'][region] = {'days': int(g.day.nunique()), 'model': e, 'smard': s}
+            lines.append(f"| {region} | {e:.2%} | {s:.2%} | {e / s - 1:+.0%} |")
+        for (day, region), g in done.groupby(['day', 'region']):
+            board['daily'].append({'day': day, 'region': region, 'model': _nmae(g, 'ensemble'), 'smard': _nmae(g, 'smard')})
+    for (day, region), g in first[first.day.isin(sorted(first.day.unique())[-PROFILE_DAYS:])].groupby(['day', 'region']):
+        prof = {name: [round(float(v), 1) for v in g[g.forecast == name].sort_values('slot').mwh]
+                for name in ('ensemble', 'smard')}
+        act = g[g.forecast == 'ensemble'].sort_values('slot').actual
+        prof['actual'] = [None if pd.isna(v) else round(float(v), 1) for v in act]
+        board['profiles'].append({'day': day, 'region': region, **prof})
     (LIVE / 'scoreboard.md').write_text("\n".join(lines) + "\n")
+    (LIVE / 'scoreboard.json').write_text(json.dumps(board, separators=(',', ':')))
     print("\n".join(lines[-7:]))
+
+
+def publish() -> None:
+    """Commit the new day files and the scoreboard to GitHub (sparse, shallow clone in /tmp)."""
+    log = pd.read_csv(LOG)
+    with tempfile.TemporaryDirectory() as tmp:
+        git = lambda *a: subprocess.run(['git', '-C', tmp, *a], check=True, capture_output=True, text=True)
+        subprocess.run(['git', 'clone', '--depth', '1', '--filter=blob:none', '--sparse', REPO, tmp],
+                       check=True, capture_output=True, text=True)
+        git('sparse-checkout', 'set', PUBLISHED)
+        out = Path(tmp) / PUBLISHED
+        (out / 'forecasts').mkdir(parents=True, exist_ok=True)
+        new_days = []
+        for day, g in log.groupby('day'):
+            f = out / 'forecasts' / f'{day}.csv'
+            if not f.exists():                        # a day's file is never rewritten
+                first_issue = g.issued_at.min()
+                g[g.issued_at == first_issue].to_csv(f, index=False, float_format='%.1f')
+                new_days.append(day)
+        for name in ('scoreboard.md', 'scoreboard.json'):
+            shutil.copy(LIVE / name, out / name)
+        git('add', PUBLISHED)
+        if not git('status', '--porcelain').stdout.strip():
+            print("publish: nothing new")
+            return
+        git('-c', 'user.name=John Theurer', '-c', 'user.email=john@energy-data-solutions.com',
+            'commit', '-m', f"Live forecast for {', '.join(new_days) or 'scoreboard update'}")
+        git('push', 'origin', 'HEAD:main')
+        print(f"publish: pushed {', '.join(new_days) or 'scoreboard'}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument('command', choices=['train', 'forecast', 'scoreboard'])
-    {'train': train, 'forecast': forecast, 'scoreboard': scoreboard}[parser.parse_args().command]()
+    parser.add_argument('command', choices=['train', 'forecast', 'scoreboard', 'publish'])
+    {'train': train, 'forecast': forecast, 'scoreboard': scoreboard, 'publish': publish}[parser.parse_args().command]()
 
 
 if __name__ == '__main__':
