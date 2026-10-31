@@ -1,0 +1,6 @@
+data/
+results/*.csv
+.venv/
+results/*.parquet
+results/*.npz
+results/*.log
