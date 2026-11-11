@@ -37,6 +37,7 @@ TSOS = REGIONS[1:]
 ACTUAL, FORECAST = 410, 411
 DATA_DIR = Path(__file__).parent.parent / 'data'
 WEATHER_START = '2021-01-01'
+REFETCH_DAYS = 14                       # the current year's weather is refetched this far back
 WEATHER_VARS = ['temperature_2m', 'shortwave_radiation', 'cloud_cover']
 
 # Population-weighted points per TSO region (largest cities, population in millions).
@@ -65,10 +66,14 @@ for _tso in TSOS:                       # states split between regions (HE, BW) 
 
 def _get(url: str, **params) -> dict:
     for attempt in range(8):
-        r = requests.get(url, params=params, timeout=120)
-        if r.status_code != 429:
-            r.raise_for_status()
-            return r.json()
+        try:
+            r = requests.get(url, params=params, timeout=120)
+            if r.status_code != 429:
+                r.raise_for_status()
+                return r.json()
+        except (requests.Timeout, requests.ConnectionError, requests.JSONDecodeError):
+            if attempt == 7:                    # slow, unreachable, or an empty/truncated 200
+                raise
         time.sleep(60 * (attempt + 1))      # Open-Meteo's free tier limits calls per minute and hour
     r.raise_for_status()
 
@@ -106,13 +111,19 @@ def weather(end: str) -> dict[str, pd.DataFrame]:
     for lo, hi in zip(years[:-1], years[1:]):
         cache = raw_dir / f'{lo.year}.parquet'
         complete = hi.month == 1 and hi.day == 1          # past years never change; refetch the current one
-        if complete and cache.exists():
-            frames.append(pd.read_parquet(cache))
+        old = pd.read_parquet(cache) if cache.exists() else None
+        if complete and old is not None:
+            frames.append(old)
             continue
+        # Open-Meteo bills a request by locations x fortnights, so the full year so far costs
+        # hundreds of calls; refetch only the last REFETCH_DAYS of a cached current year.
+        start = lo
+        if old is not None and len(old):
+            start = max(lo, old.index.max().tz_localize(None).normalize() - pd.Timedelta(f'{REFETCH_DAYS}D'))
         res = _get(METEO, latitude=','.join(f'{p[1]}' for p in points),
                    longitude=','.join(f'{p[2]}' for p in points),
                    hourly=','.join(f'{v}_previous_day2' for v in WEATHER_VARS),
-                   start_date=lo.date().isoformat(), end_date=(hi - pd.Timedelta('1D')).date().isoformat(),
+                   start_date=start.date().isoformat(), end_date=(hi - pd.Timedelta('1D')).date().isoformat(),
                    timezone='UTC')
         year = []
         for (region, _, _, w), loc in zip(points, res):
@@ -120,7 +131,10 @@ def weather(end: str) -> dict[str, pd.DataFrame]:
             h.index = pd.to_datetime(h.pop('time'), utc=True)
             h.columns = [c.removesuffix('_previous_day2') for c in h.columns]
             year.append(h.assign(region=region, w=w))
-        frames.append(pd.concat(year))
+        new = pd.concat(year)
+        if start > lo:
+            new = pd.concat([old[old.index < start.tz_localize('UTC')], new])
+        frames.append(new)
         frames[-1].to_parquet(cache)
         print(f"  weather {lo.year}", flush=True)
     df = pd.concat(frames)
