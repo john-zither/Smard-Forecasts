@@ -47,6 +47,11 @@ def train() -> None:
     from demand.lgbm import PARAMS
     from demand.nn import fit, fit_scaler, apply_scaler, to_tensors
 
+    # A CPU fallback is not a slower success: on 2026-11-08 the GPU wasn't visible, the
+    # network trained on the CPU for two hours, and the machine ran out of memory with a
+    # game open. Fail fast instead; the saved models keep serving the daily forecast.
+    if not torch.cuda.is_available() and not os.environ.get('ALLOW_CPU'):
+        raise SystemExit("no CUDA device; not retraining (set ALLOW_CPU=1 to train on the CPU)")
     download(incremental=True)
     df = build()
     MODELS.mkdir(exist_ok=True)
@@ -60,13 +65,16 @@ def train() -> None:
                         callbacks=[lgb.early_stopping(100, verbose=False)])
     booster.save_model(str(MODELS / 'lgbm.txt'), num_iteration=booster.best_iteration)
     print(f"lgbm: {booster.best_iteration} trees on data up to {last.date()}", flush=True)
+    del ds, booster, fit_rows, val_rows, lab               # free the tabular copies first
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     days, X, y, _, nn_cols = to_tensors(df)
+    del df
     labeled = np.flatnonzero(np.isfinite(y).all(axis=(1, 2)))
     train_d, val_d = labeled[:-VAL_DAYS], labeled[-VAL_DAYS:]
     sc = fit_scaler(X, train_d)
     Z = apply_scaler(X, sc)
+    del X
     for seed in range(SEEDS):
         model = fit(Z, y, train_d, val_d, seed, device)
         torch.save(model.state_dict(), MODELS / f'nn_seed{seed}.pt')
