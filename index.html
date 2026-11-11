@@ -11,6 +11,7 @@
     --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
     --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
     --s-model: #2a78d6; --s-smard: #eb6834; --good: #006300;
+    --won: #1f8a3b; --lost: #c7c5bc; --missed: #c4314b; --pending: #e1e0d9;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -18,6 +19,7 @@
       --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
       --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
       --s-model: #3987e5; --s-smard: #d95926; --good: #0ca30c;
+      --won: #2ea84f; --lost: #55544f; --missed: #e0546b; --pending: #2c2c2a;
     }
   }
   :root[data-theme="dark"] {
@@ -25,6 +27,7 @@
     --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
     --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
     --s-model: #3987e5; --s-smard: #d95926; --good: #0ca30c;
+    --won: #2ea84f; --lost: #55544f; --missed: #e0546b; --pending: #2c2c2a;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink);
@@ -59,6 +62,23 @@
   .tip b { font-weight: 600; }
   .empty { color: var(--muted); font-size: 0.9rem; padding: 12px 0; }
   .scroll { overflow-x: auto; }
+  #live-table td, #live-table th { white-space: nowrap; }
+  .banner { border: 1px solid var(--missed); border-radius: 12px; padding: 12px 16px; margin-top: 20px; color: var(--ink); }
+  .banner b { color: var(--missed); }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 4px 0 14px; }
+  .stat .v { font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 0.8rem; color: var(--muted); }
+  .strip { display: flex; flex-wrap: wrap; gap: 3px; position: relative; margin-bottom: 8px; }
+  .sq { width: 22px; height: 22px; border-radius: 4px; position: relative; cursor: default; }
+  .sq.won { background: var(--won); } .sq.lost { background: var(--lost); }
+  .sq.pending { background: var(--pending); }
+  .sq.missed { background: repeating-linear-gradient(135deg, var(--missed) 0 3px, transparent 3px 6px);
+               box-shadow: inset 0 0 0 2px var(--missed); }
+  .sq.late::after { content: ''; position: absolute; right: 3px; top: 3px; width: 6px; height: 6px;
+                    border-radius: 50%; background: var(--surface); }
+  .incidents { margin: 12px 0 0; padding: 0; list-style: none; font-size: 0.88rem; color: var(--ink-2); }
+  .incidents li { padding: 6px 0; border-top: 1px solid var(--grid); }
+  .incidents b { color: var(--ink); font-weight: 600; }
   footer { margin-top: 28px; font-size: 0.82rem; color: var(--muted); }
 </style>
 </head>
@@ -70,6 +90,22 @@
      <a href="https://github.com/john-zither/Smard-Forecasts/tree/main/demand/live/forecasts">GitHub</a>
      before the day happens, then scored against SMARD's own day-ahead forecast.</p>
 
+  <div class="banner" id="stale" hidden></div>
+  <section class="card">
+    <h2>Every day since launch</h2>
+    <div class="sub">One square per forecast day: did this model beat SMARD's forecast, and was it issued on time?
+      Missed and late days stay on the record.</div>
+    <div class="stats" id="stats"></div>
+    <div class="strip" id="strip"></div><div class="tip" id="strip-tip"></div>
+    <div class="legend">
+      <span><span class="key" style="background:var(--won)"></span>Beat SMARD (3+ of 5 regions)</span>
+      <span><span class="key" style="background:var(--lost)"></span>SMARD closer</span>
+      <span><span class="key" style="background:var(--pending)"></span>Not scored yet</span>
+      <span><span class="key" style="background:repeating-linear-gradient(135deg,var(--missed) 0 2px,transparent 2px 4px);box-shadow:inset 0 0 0 1px var(--missed)"></span>Missed</span>
+      <span>● in a square = issued late (after 12:30 the day before)</span>
+    </div>
+    <ul class="incidents" id="incidents"></ul>
+  </section>
   <section class="card">
     <h2>Live record</h2>
     <div class="sub" id="live-sub">Loading…</div>
@@ -185,10 +221,77 @@ function renderLive() {
   }
   const days = Math.max(...Object.values(live).map(r => r.days));
   sub.textContent = `${days} day${days === 1 ? '' : 's'} scored so far. Error = mean absolute error / mean actual load.`;
-  t.innerHTML = '<thead><tr><th>Region</th><th>This model</th><th>SMARD</th><th>Error vs SMARD</th></tr></thead><tbody>' +
+  t.innerHTML = '<thead><tr><th>Region</th><th>This model</th><th>SMARD</th><th>Error vs SMARD</th>' +
+    '<th>Days won</th><th>Worst day</th></tr></thead><tbody>' +
     regions.map(r => { const v = live[r]; if (!v) return ''; const d = v.model / v.smard - 1;
+      const rows = board.daily.filter(x => x.region === r);
+      const wonDays = rows.filter(x => x.model < x.smard).length;
+      const worst = rows.reduce((a, b) => (b.model > (a ? a.model : -1) ? b : a), null);
       return `<tr><td>${NAMES[r]}</td><td>${pct(v.model)}</td><td>${pct(v.smard)}</td>` +
-             `<td class="${d < 0 ? 'better' : ''}">${d < 0 ? '−' : '+'}${Math.abs(d * 100).toFixed(0)}%</td></tr>`; }).join('') + '</tbody>';
+             `<td class="${d < 0 ? 'better' : ''}">${d < 0 ? '−' : '+'}${Math.abs(d * 100).toFixed(0)}%</td>` +
+             `<td>${wonDays} of ${rows.length}</td>` +
+             `<td>${worst ? `${pct(worst.model)} on ${worst.day.slice(5)} (SMARD ${pct(worst.smard)})` : '—'}</td></tr>`; }).join('') + '</tbody>';
+}
+
+function dayResults() {
+  // {day: {region: {model, smard}}} for scored days
+  const out = {};
+  for (const d of board.daily) (out[d.day] = out[d.day] || {})[d.region] = d;
+  return out;
+}
+
+function renderRecord(incidents) {
+  const rec = board.record || [], res = dayResults(), byDay = {};
+  for (const inc of incidents) for (const d of inc.days) byDay[d] = inc.what;
+  const n = board.regions.length, need = Math.ceil(n / 2);
+  const cls = r => {
+    if (r.status === 'missed') return 'missed';
+    const g = res[r.day];
+    if (!g) return 'pending';
+    const won = board.regions.filter(x => g[x] && g[x].model < g[x].smard).length;
+    return won >= need ? 'won' : 'lost';
+  };
+  const items = rec.map(r => ({...r, c: cls(r)}));
+  const due = items.length, issued = items.filter(r => r.status !== 'missed').length;
+  const onTime = items.filter(r => r.status === 'on_time').length;
+  const scored = items.filter(r => r.c === 'won' || r.c === 'lost'), won = scored.filter(r => r.c === 'won').length;
+  const regionWins = board.regions.map(x => Object.values(res).filter(g => g[x] && g[x].model < g[x].smard).length);
+  const stat = (v, l) => `<div class="stat"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  document.getElementById('stats').innerHTML =
+    stat(`${won} of ${scored.length}`, 'scored days beat SMARD') +
+    stat(`${regionWins.reduce((a, b) => a + b, 0)} of ${scored.length * n}`, 'region-days beat SMARD') +
+    stat(`${onTime} of ${due}`, 'issued on time') +
+    stat(`${due - issued}`, due - issued === 1 ? 'day missed' : 'days missed') +
+    (board.model ? stat(board.model.data_until, 'models trained on data up to') : '');
+  const strip = document.getElementById('strip'), tip = document.getElementById('strip-tip');
+  strip.innerHTML = items.map((r, i) => `<div class="sq ${r.c}${r.status === 'late' ? ' late' : ''}" data-i="${i}"
+    role="img" aria-label="${r.day}: ${r.c}${r.status === 'late' ? ', late' : ''}"></div>`).join('');
+  tip.style.position = 'fixed';
+  strip.querySelectorAll('.sq').forEach(el => {
+    el.addEventListener('pointerenter', ev => {
+      const r = items[+el.dataset.i], g = res[r.day];
+      let h = `<b>${r.day}</b><br>`;
+      h += r.status === 'missed' ? 'No forecast issued' :
+           `Issued ${r.issued_at.replace('T', ' ').slice(0, 16)}${r.status === 'late' ? ' (late)' : ''}`;
+      if (g) h += '<br>' + board.regions.map(x => g[x] ? `${NAMES[x]}: ${pct(g[x].model)} vs SMARD ${pct(g[x].smard)}${g[x].model < g[x].smard ? ' ✓' : ''}` : '').join('<br>');
+      else if (r.status !== 'missed') h += '<br>Actual load not published yet';
+      if (byDay[r.day]) h += `<br><span style="white-space:normal;display:inline-block;max-width:280px">${byDay[r.day]}</span>`;
+      tip.innerHTML = h; tip.style.display = 'block';
+      const b = el.getBoundingClientRect();
+      tip.style.left = Math.max(8, Math.min(b.left, innerWidth - tip.offsetWidth - 8)) + 'px';
+      tip.style.top = (b.bottom + 6) + 'px';
+    });
+    el.addEventListener('pointerleave', () => { tip.style.display = 'none'; });
+  });
+  document.getElementById('incidents').innerHTML = incidents.slice().reverse().map(inc =>
+    `<li><b>${inc.days.map(d => d.slice(5)).join(', ')}</b> · ${inc.what}</li>`).join('');
+  // stale banner: the latest due forecast is missing, or the board hasn't moved in over a day
+  const last = items[items.length - 1], age = (Date.now() - Date.parse(board.updated_at)) / 36e5;
+  const banner = document.getElementById('stale');
+  if (age > 26 || (last && last.status === 'missed')) {
+    banner.hidden = false;
+    banner.innerHTML = `<b>Behind schedule.</b> The latest forecast is missing; last update ${board.updated_at.replace('T', ' ').slice(0, 16)}.`;
+  }
 }
 
 function renderControls() {
@@ -220,10 +323,13 @@ function renderCharts() {
   ], v => (v * 100).toFixed(1) + '%', i => rows[i].day);
 }
 
-fetch('demand/live/scoreboard.json', {cache: 'no-store'}).then(r => r.json()).then(b => {
+Promise.all([
+  fetch('demand/live/scoreboard.json', {cache: 'no-store'}).then(r => r.json()),
+  fetch('demand/live/incidents.json', {cache: 'no-store'}).then(r => r.ok ? r.json() : []).catch(() => []),
+]).then(([b, incidents]) => {
   board = b;
   document.getElementById('updated').textContent = 'Updated ' + b.updated_at.replace('T', ' ').slice(0, 16) + '.';
-  renderLive(); renderControls(); renderCharts();
+  renderRecord(incidents); renderLive(); renderControls(); renderCharts();
 }).catch(() => { document.getElementById('live-sub').textContent = 'Could not load the scoreboard.'; });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => board && renderCharts());
 </script>

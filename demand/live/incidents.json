@@ -1,0 +1,8 @@
+[
+  {"days": ["2026-11-01"], "what": "Launch day: the first forecast was issued by hand at 13:58."},
+  {"days": ["2026-11-04"], "what": "Issued at 17:38. Each run re-downloaded the whole year's weather and used up the free Open-Meteo quota, so the noon run timed out. Now only the last two weeks are re-fetched."},
+  {"days": ["2026-11-05"], "what": "Issued at 13:40. The host laptop suspended when its lid closed, so the noon run never started; it was run by hand."},
+  {"days": ["2026-11-07"], "what": "Missed. The host machine ran out of memory during the noon run (the forecast itself used 0.8 GB)."},
+  {"days": ["2026-11-08"], "what": "Missed. No run was started at noon; the cause was not recorded."},
+  {"days": ["2026-11-11", "2026-11-12"], "what": "The host's disk filled up, so the cluster stopped starting jobs and deleted the runtime images. Nov 11 was missed and Nov 12 was not issued on time. A health check now sends an alert before the disk gets that full."}
+]
