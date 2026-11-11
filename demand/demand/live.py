@@ -38,6 +38,7 @@ LOG = LIVE / 'forecasts.csv'
 REPO = 'git@github.com:john-zither/Smard-Forecasts.git'
 PUBLISHED = 'demand/live'
 PROFILE_DAYS = 14                          # days of quarter-hour profiles on the website
+ON_TIME = pd.Timedelta('12h30min')         # issued by 12:30 the day before counts as on time
 SEEDS = 3
 VAL_DAYS = 42
 
@@ -152,6 +153,25 @@ def _nmae(g: pd.DataFrame, name: str) -> float:
     return float((g.mwh - g.actual).abs().mean() / g.actual.mean())
 
 
+def record(now: pd.Timestamp) -> list[dict]:
+    """Every day a forecast was due since the first one: when it was issued, and whether
+    on time (by ON_TIME the day before), late, or missed. Missed days stay on the record."""
+    log = pd.read_csv(LOG, usecols=['issued_at', 'day'])
+    issued = log.groupby('day').issued_at.min()
+    due_until = now.normalize().tz_localize(None) + pd.Timedelta('1D' if now.hour >= 12 else '0D')
+    out = []
+    for day in pd.date_range(pd.Timestamp(issued.index.min()), due_until):
+        key = day.date().isoformat()
+        if key not in issued:
+            out.append({'day': key, 'issued_at': None, 'status': 'missed'})
+            continue
+        at = pd.Timestamp(issued[key]).tz_convert(TZ)
+        deadline = (day - pd.Timedelta('1D')).tz_localize(TZ) + ON_TIME
+        out.append({'day': key, 'issued_at': at.isoformat(timespec='minutes'),
+                    'status': 'on_time' if at <= deadline else 'late'})
+    return out
+
+
 def scoreboard() -> None:
     """Score each logged day (its first forecast only) once its actuals are complete."""
     first = scored_log()
@@ -159,8 +179,12 @@ def scoreboard() -> None:
     lines = ["# Live scoreboard", "",
              "Forecasts issued at 12:00 (Europe/Berlin) the day before; each day's forecast is committed to",
              "`forecasts/<day>.csv` before the outcome is known. nMAE = mean absolute error / mean actual load.", ""]
-    board = {'updated_at': pd.Timestamp.now(TZ).isoformat(timespec='seconds'), 'regions': REGIONS,
-             'live': {}, 'daily': [], 'profiles': []}
+    now = pd.Timestamp.now(TZ)
+    board = {'updated_at': now.isoformat(timespec='seconds'), 'regions': REGIONS,
+             'live': {}, 'daily': [], 'profiles': [], 'record': record(now), 'model': None}
+    if (MODELS / 'meta.json').exists():
+        meta = json.loads((MODELS / 'meta.json').read_text())
+        board['model'] = {k: meta[k] for k in ('trained_at', 'data_until')}
     if done.empty:
         lines.append("No complete day yet.")
     else:
