@@ -3,12 +3,12 @@
 Forecasts issued at 12:00 (Europe/Berlin) the day before; each day's forecast is committed to
 `forecasts/<day>.csv` before the outcome is known. nMAE = mean absolute error / mean actual load.
 
-8 day(s) scored, 2026-11-01 → 2026-11-10.
+9 day(s) scored, 2026-11-01 → 2026-11-12.
 
 | region | this model | SMARD | error vs SMARD |
 |---|---|---|---|
-| DE | 2.19% | 4.29% | -49% |
-| 50Hertz | 3.86% | 6.64% | -42% |
-| Amprion | 3.16% | 5.16% | -39% |
-| TenneT | 2.81% | 5.66% | -50% |
-| TransnetBW | 3.27% | 4.07% | -20% |
+| DE | 2.16% | 4.56% | -53% |
+| 50Hertz | 3.59% | 7.36% | -51% |
+| Amprion | 3.07% | 5.10% | -40% |
+| TenneT | 2.95% | 5.84% | -49% |
+| TransnetBW | 3.28% | 4.18% | -21% |
