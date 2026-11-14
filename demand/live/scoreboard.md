@@ -7,8 +7,8 @@ Forecasts issued at 12:00 (Europe/Berlin) the day before; each day's forecast is
 
 | region | this model | SMARD | error vs SMARD |
 |---|---|---|---|
-| DE | 2.16% | 4.56% | -53% |
+| DE | 2.18% | 4.58% | -52% |
 | 50Hertz | 3.59% | 7.36% | -51% |
-| Amprion | 3.07% | 5.10% | -40% |
+| Amprion | 3.12% | 5.14% | -39% |
 | TenneT | 2.95% | 5.84% | -49% |
-| TransnetBW | 3.28% | 4.18% | -21% |
+| TransnetBW | 3.29% | 4.17% | -21% |
