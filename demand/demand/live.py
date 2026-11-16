@@ -30,6 +30,7 @@ import pandas as pd
 
 from demand.data import REGIONS, SLOTS, TZ, download, load
 from demand.features import build, feature_columns
+from demand.quantiles import BAND_NAMES as BANDS, offsets
 
 ROOT = Path(__file__).parent.parent
 MODELS = ROOT / 'models'
@@ -115,12 +116,46 @@ def predict(df: pd.DataFrame, day: pd.Timestamp) -> dict[str, np.ndarray]:
     return out
 
 
+def residuals() -> dict[str, pd.DataFrame]:
+    """{region: [day x 96] actual - ensemble}: live days from the log's first forecasts, earlier days
+    from the walk-forward backtest (results/), so the bands work from the first live day."""
+    from demand.ensemble import load_predictions
+    try:
+        backtest = load_predictions()['ensemble']
+    except FileNotFoundError:
+        backtest = {}
+    first = scored_log() if LOG.exists() else pd.DataFrame(columns=['forecast', 'complete'])
+    live = first[(first.forecast == 'ensemble') & first.complete.astype(bool)]
+    out = {}
+    for region in REGIONS:
+        actual = load('actual', region)
+        g = live[live.region == region]
+        r = (g.actual - g.mwh).groupby([pd.to_datetime(g.day), g.slot]).first().unstack()
+        r.columns = r.columns.astype(int)
+        if region in backtest:
+            r = r.combine_first(actual.reindex(backtest[region].index) - backtest[region])
+        out[region] = r.sort_index()
+    return out
+
+
+def add_bands(fc: dict[str, np.ndarray], day: pd.Timestamp) -> None:
+    """Add the q05..q95 bands (see demand.quantiles) around the ensemble, if every region has enough history."""
+    resid = residuals()
+    off = [offsets(resid[region], day) for region in REGIONS]
+    if any(o is None for o in off):
+        print("bands: not enough residual history, skipped")
+        return
+    for k, name in enumerate(BANDS):
+        fc[name] = fc['ensemble'] + np.stack([o[k] for o in off])
+
+
 def forecast() -> None:
     now = pd.Timestamp.now(TZ)
     day = (now + pd.Timedelta('1D')).normalize().tz_localize(None)
     download(incremental=True)
     df = build()
     fc = predict(df, day)
+    add_bands(fc, day)
     rows = []
     for r, region in enumerate(REGIONS):
         smard = load('smard', region).reindex([day]).to_numpy()[0]
@@ -146,6 +181,17 @@ def scored_log() -> pd.DataFrame:
                        for d, r, s in zip(first.day, first.region, first.slot)]
     first['complete'] = first.groupby(['day', 'region']).actual.transform(lambda a: a.notna().all())
     return first
+
+
+def _coverage(g: pd.DataFrame) -> dict:
+    """Share of actuals inside the 50% and 90% bands, over the days that had bands."""
+    w = g[g.forecast.isin(BANDS)].pivot_table(index=['day', 'slot'], columns='forecast', values='mwh')
+    if set(w.columns) != set(BANDS):
+        return {}
+    a = g[g.forecast == 'ensemble'].set_index(['day', 'slot']).actual.reindex(w.index)
+    inside = lambda lo, hi: float(((a >= w[lo]) & (a <= w[hi])).mean())
+    return {'band_days': int(w.index.get_level_values('day').nunique()),
+            'cover50': inside('q25', 'q75'), 'cover90': inside('q05', 'q95')}
 
 
 def _nmae(g: pd.DataFrame, name: str) -> float:
@@ -193,13 +239,18 @@ def scoreboard() -> None:
         for region in REGIONS:
             g = done[done.region == region]
             e, s = _nmae(g, 'ensemble'), _nmae(g, 'smard')
-            board['live'][region] = {'days': int(g.day.nunique()), 'model': e, 'smard': s}
+            board['live'][region] = {'days': int(g.day.nunique()), 'model': e, 'smard': s} | _coverage(g)
             lines.append(f"| {region} | {e:.2%} | {s:.2%} | {e / s - 1:+.0%} |")
+        cov = {r: v for r, v in board['live'].items() if 'cover90' in v}
+        if cov:
+            lines += ["", "Uncertainty bands, share of quarter-hours inside (target 50% / 90%):", "",
+                      "| region | days | 50% band | 90% band |", "|---|---|---|---|"]
+            lines += [f"| {r} | {v['band_days']} | {v['cover50']:.0%} | {v['cover90']:.0%} |" for r, v in cov.items()]
         for (day, region), g in done.groupby(['day', 'region']):
             board['daily'].append({'day': day, 'region': region, 'model': _nmae(g, 'ensemble'), 'smard': _nmae(g, 'smard')})
     for (day, region), g in first[first.day.isin(sorted(first.day.unique())[-PROFILE_DAYS:])].groupby(['day', 'region']):
         prof = {name: [round(float(v), 1) for v in g[g.forecast == name].sort_values('slot').mwh]
-                for name in ('ensemble', 'smard')}
+                for name in ('ensemble', 'smard', *BANDS) if (g.forecast == name).any()}
         act = g[g.forecast == 'ensemble'].sort_values('slot').actual
         prof['actual'] = [None if pd.isna(v) else round(float(v), 1) for v in act]
         board['profiles'].append({'day': day, 'region': region, **prof})

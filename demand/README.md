@@ -74,6 +74,19 @@ cloud cover; holidays weighted by each state's share of the region; calendar.
 * `demand/ensemble.py`: the average of the two, the forecast reported above.
   The two models are about equally accurate alone; averaging gains 2–5%.
 
+**Uncertainty bands** (`demand/quantiles.py`). The live forecast also
+publishes 50% and 90% ranges: the ensemble plus the empirical quantiles of
+its own errors over the last 90 complete days, per 4-hour block. Over Dec
+2025 – Oct 2026 the 90% range held 86–90% of quarter-hours and the 50% range
+47–52% (`results/quantiles.md`). One LightGBM model per quantile with conformal
+calibration was tried as well, and lost in every region: higher pinball loss
+and a 90% range 15–35% wider.
+
+**Why SMARD's regional forecasts are poor** (`results/why-smard-is-off.md`):
+TransnetBW ran a flat +400 MW offset from Oct 2020 until Aug 2026; 50Hertz
+has forecast Sundays like working days since June 2025; and the forecasts
+anticipate only 14–30% of the midday dip on sunny days, except Amprion's (56%).
+
 ## Caveats
 
 * One year of out-of-sample test. SMARD's TransnetBW forecast improved

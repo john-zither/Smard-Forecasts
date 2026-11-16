@@ -48,6 +48,7 @@
   tr:last-child td { border-bottom: none; }
   .better { color: var(--good); font-weight: 600; }
   .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+  .key.band { background: var(--s-model); opacity: 0.3; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
   .chip { border: 1px solid var(--ring); background: transparent; color: var(--ink-2); border-radius: 999px;
           padding: 5px 12px; font: inherit; font-size: 0.85rem; cursor: pointer; }
@@ -119,6 +120,7 @@
     <div class="controls"><select class="chip" id="day" aria-label="Day"></select></div>
     <div class="legend">
       <span><span class="key" style="background:var(--s-model)"></span>This model</span>
+      <span id="band-key" hidden><span class="key band"></span>Model's 50% / 90% range</span>
       <span><span class="key" style="background:var(--s-smard)"></span>SMARD forecast</span>
       <span><span class="key" style="background:var(--ink)"></span>Actual</span>
     </div>
@@ -171,9 +173,10 @@ function niceTicks(lo, hi, n = 4) {
 }
 
 // Line chart with a crosshair tooltip. series: [{name, color, values, dash}], x labels per index.
-function lineChart(el, labels, series, yFmt, tipLabel) {
+// bands (optional): [{name, lo, hi, color, opacity}] shaded ranges drawn under the lines.
+function lineChart(el, labels, series, yFmt, tipLabel, bands = []) {
   const W = 900, H = 300, m = {l: 64, r: 16, t: 12, b: 28};
-  const all = series.flatMap(s => s.values).filter(v => v != null);
+  const all = [...series.flatMap(s => s.values), ...bands.flatMap(b => [...b.lo, ...b.hi])].filter(v => v != null);
   if (!all.length) { el.innerHTML = '<div class="empty">No data yet.</div>'; return; }
   let lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * 0.08 || Math.abs(hi) * 0.05 || 1;
   lo -= pad; hi += pad;
@@ -187,6 +190,11 @@ function lineChart(el, labels, series, yFmt, tipLabel) {
   const every = Math.max(1, Math.ceil(labels.length / 8));
   labels.forEach((l, i) => { if (i % every === 0) svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="12" fill="${css('--muted')}">${l}</text>`; });
   svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${H - m.b}" y2="${H - m.b}" stroke="${css('--axis')}"/>`;
+  for (const b of bands) {
+    const up = b.hi.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1));
+    const down = b.lo.map((v, i) => x(i).toFixed(1) + ',' + y(v).toFixed(1)).reverse();
+    svg += `<path d="M${up.join('L')}L${down.join('L')}Z" fill="${b.color}" fill-opacity="${b.opacity}" stroke="none"/>`;
+  }
   for (const s of series) {
     let d = '', pen = false;
     s.values.forEach((v, i) => { if (v == null) { pen = false; return; } d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); pen = true; });
@@ -203,7 +211,8 @@ function lineChart(el, labels, series, yFmt, tipLabel) {
     const i = Math.max(0, Math.min(labels.length - 1, Math.round((p.x - m.l) / (W - m.l - m.r) * (labels.length - 1))));
     cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.setAttribute('visibility', 'visible');
     tip.innerHTML = `<b>${tipLabel(i)}</b><br>` + series.map(s =>
-      `<span class="key" style="background:${s.color}"></span>${s.name}: ${s.values[i] == null ? '—' : yFmt(s.values[i], true)}`).join('<br>');
+      `<span class="key" style="background:${s.color}"></span>${s.name}: ${s.values[i] == null ? '—' : yFmt(s.values[i], true)}`).join('<br>') +
+      bands.map(b => `<br><span class="key band"></span>${b.name}: ${yFmt(b.lo[i])}–${yFmt(b.hi[i], true)}`).join('');
     tip.style.display = 'block';
     const box = el.getBoundingClientRect(), px = ev.clientX - box.left;
     tip.style.left = Math.min(px + 14, box.width - tip.offsetWidth - 4) + 'px';
@@ -220,7 +229,10 @@ function renderLive() {
     t.innerHTML = ''; return;
   }
   const days = Math.max(...Object.values(live).map(r => r.days));
-  sub.textContent = `${days} day${days === 1 ? '' : 's'} scored so far. Error = mean absolute error / mean actual load.`;
+  const de = live.DE || {};
+  sub.textContent = `${days} day${days === 1 ? '' : 's'} scored so far. Error = mean absolute error / mean actual load.` +
+    (de.cover90 != null ? ` Germany's actual load fell inside the model's 90% range ${Math.round(de.cover90 * 100)}% of the time` +
+      ` and inside its 50% range ${Math.round(de.cover50 * 100)}% (over ${de.band_days} day${de.band_days === 1 ? '' : 's'}).` : '');
   t.innerHTML = '<thead><tr><th>Region</th><th>This model</th><th>SMARD</th><th>Error vs SMARD</th>' +
     '<th>Days won</th><th>Worst day</th></tr></thead><tbody>' +
     regions.map(r => { const v = live[r]; if (!v) return ''; const d = v.model / v.smard - 1;
@@ -313,7 +325,12 @@ function renderCharts() {
     {name: 'This model', color: css('--s-model'), values: p.ensemble},
     {name: 'SMARD', color: css('--s-smard'), values: p.smard},
     {name: 'Actual', color: css('--ink'), values: p.actual, dash: true},
-  ] : [], (v, exact) => exact ? fmt(v) + ' MWh' : fmt(v), i => `${day} ${labels[i]}`);
+  ] : [], (v, exact) => exact ? fmt(v) + ' MWh' : fmt(v), i => `${day} ${labels[i]}`,
+  p && p.q05 ? [
+    {name: '90% range', lo: p.q05, hi: p.q95, color: css('--s-model'), opacity: 0.12},
+    {name: '50% range', lo: p.q25, hi: p.q75, color: css('--s-model'), opacity: 0.22},
+  ] : []);
+  document.getElementById('band-key').hidden = !(p && p.q05);
   const rows = board.daily.filter(d => d.region === region).sort((a, b) => a.day.localeCompare(b.day));
   const card = document.getElementById('daily-card');
   card.hidden = rows.length < 2;
