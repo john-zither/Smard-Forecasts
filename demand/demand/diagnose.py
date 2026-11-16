@@ -69,6 +69,8 @@ def transnetbw_step() -> None:
     w = pd.DataFrame({'actual': a.mean(axis=1), 'forecast': f.mean(axis=1)})
     w['gap'] = w.forecast - w.actual
     print(w['2020-09-01':'2020-11-15'].resample('W-MON').mean().round(0).to_string(), '\n')
+    print('TransnetBW: monthly gap (MW) in 2026, fixed from August')
+    print(w.gap['2026-01':].resample('MS').mean().round(0).to_string(), '\n')
 
 
 def correctable(test_from: str = '2025-01-01') -> None:

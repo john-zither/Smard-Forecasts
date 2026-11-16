@@ -3,24 +3,26 @@
 SMARD's day-ahead grid-load forecast for Germany is the sum of the four transmission
 operators' (TSOs') own forecasts. Amprion's is decent (4.0% nMAE since 2025). 50Hertz
 (8.2%), TransnetBW (7.1%) and TenneT (5.9%) are no better than "same quarter-hour last
-week". The poor regions don't share one bug; each has its own failure. The numbers below
+week". TransnetBW's main defect was fixed in August 2026; the other two remain. The poor regions don't share one bug; each has its own failure. The numbers below
 come from SMARD's published actuals (filter 410) and forecasts (filter 411), plus the
 Open-Meteo weather already cached in `data/`. Reproduce them with
 `uv run python -m demand.diagnose`.
 
-## TransnetBW: a fixed +400 MW offset since October 2020
+## TransnetBW: a fixed +400 MW offset from October 2020 to July 2026
 
 Until September 2020 TransnetBW's forecast was unbiased. In the week of 5 October 2020
-it started running about 250–500 MW above the measured load, and it has stayed there
-for six years: +6.0% (2021), +7.9%, +7.1%, +5.5%, +6.3%, +6.0% (2026).
+it started running about 250–500 MW above the measured load. It stayed there for almost
+six years: +6.0% (2021), +7.9%, +7.1%, +5.5%, +6.3%, and 350–750 MW every month from
+January to July 2026. In **August 2026** it was finally fixed. The monthly bias dropped to
++70, +78, −31 and −81 MW (Aug–Nov), and nMAE fell from 11–13% to about 4%.
 
 The offset is almost flat. It is +300 to +500 MW in every 3-hour block and every month,
 and on every weekday (+410 Mon–Thu, +320 at weekends). It doesn't react to weather.
 Something changed in the forecast's or the measurement's scope (a load definition, a
-grid connection, a forecasting tool), and the forecast has never been recalibrated.
-That is why the trivial fix works so well: subtracting the forecast's own trailing
-28-day per-slot bias takes TransnetBW from **7.1% to 4.3%**. Most of its error is
-this one offset.
+grid connection, a forecasting tool), and it took almost six years to recalibrate. That
+is why the trivial fix worked so well: over 2025–26, subtracting the forecast's own
+trailing 28-day per-slot bias takes TransnetBW from **7.1% to 4.3%**. Most of its error
+was this one offset. Since August 2026 TransnetBW is roughly as good as Amprion.
 
 ## 50Hertz: since 15 June 2025, Sundays are forecast like working days
 
@@ -79,7 +81,7 @@ The aggregation story from the talk (good regional fits that cancel badly when s
 doesn't hold for SMARD. The regional forecasts are individually poor, each for an
 ordinary operational reason:
 
-- **TransnetBW:** a scope change in 2020 that was never recalibrated.
+- **TransnetBW:** a scope change in 2020 that was only recalibrated in August 2026.
 - **50Hertz:** a broken Sunday profile since mid-2025.
 - **TenneT and 50Hertz:** rooftop solar is largely ignored.
 - **All three:** no correction from recent measured load.
@@ -88,3 +90,13 @@ None of these would survive a basic forecast-monitoring dashboard, and that's an
 inference about the TSOs' process, not something the data proves. The data does show
 that the defects are stable and cheap to correct, which is why a SMARD-free model
 beats the published forecast by 20–50%.
+
+## What this forecast is, and isn't
+
+These are the forecasts the TSOs *publish*, through the ENTSO-E Transparency Platform,
+which the EU's transparency regulation requires. They are probably not what the TSOs run
+the grid on: the control rooms have internal forecasts (vertical load, renewable infeed)
+that aren't public, and traders use their own or commercial forecasts. Defects that last
+for months or years suggest nobody downstream depends on the published numbers. So the
+fair claim is that this project beats the *published* regional forecasts, not the TSOs'
+operational ones.
