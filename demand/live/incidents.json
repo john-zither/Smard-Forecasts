@@ -4,5 +4,6 @@
   {"days": ["2026-11-05"], "what": "Issued at 13:40. The host laptop suspended when its lid closed, so the noon run never started; it was run by hand."},
   {"days": ["2026-11-07"], "what": "Missed. The host machine ran out of memory during the noon run (the forecast itself used 0.8 GB)."},
   {"days": ["2026-11-08"], "what": "Missed. No run was started at noon; the cause was not recorded."},
-  {"days": ["2026-11-11", "2026-11-12"], "what": "The host's disk filled up, so the cluster stopped starting jobs and deleted the runtime images. Nov 11 was missed and Nov 12 was not issued on time. A health check now sends an alert before the disk gets that full."}
+  {"days": ["2026-11-11", "2026-11-12"], "what": "The host's disk filled up, so the cluster stopped starting jobs and deleted the runtime images. Nov 11 was missed and Nov 12 was not issued on time. A health check now sends an alert before the disk gets that full."},
+  {"days": ["2026-11-16", "2026-11-17"], "what": "Nov 16 missed and Nov 17 issued at 22:43. The host laptop was asleep or away at noon on Nov 15 and 16. The forecast now runs on an always-on Raspberry Pi, which catches up at boot if it was off at noon."}
 ]
