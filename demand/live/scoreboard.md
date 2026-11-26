@@ -7,18 +7,18 @@ Forecasts issued at 12:00 (Europe/Berlin) the day before; each day's forecast is
 
 | region | this model | SMARD | error vs SMARD |
 |---|---|---|---|
-| DE | 2.00% | 3.59% | -44% |
-| 50Hertz | 4.23% | 7.05% | -40% |
-| Amprion | 2.55% | 4.57% | -44% |
-| TenneT | 3.43% | 5.29% | -35% |
-| TransnetBW | 3.01% | 3.78% | -21% |
+| DE | 1.98% | 3.58% | -45% |
+| 50Hertz | 4.26% | 7.19% | -41% |
+| Amprion | 2.56% | 4.58% | -44% |
+| TenneT | 3.26% | 5.37% | -39% |
+| TransnetBW | 3.01% | 3.79% | -20% |
 
 Uncertainty bands, share of quarter-hours inside (target 50% / 90%):
 
 | region | days | 50% band | 90% band |
 |---|---|---|---|
-| DE | 8 | 52% | 92% |
-| 50Hertz | 7 | 37% | 84% |
+| DE | 8 | 52% | 93% |
+| 50Hertz | 8 | 37% | 80% |
 | Amprion | 8 | 69% | 99% |
-| TenneT | 7 | 43% | 82% |
-| TransnetBW | 8 | 43% | 88% |
+| TenneT | 8 | 44% | 85% |
+| TransnetBW | 8 | 42% | 87% |
